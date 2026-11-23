@@ -264,3 +264,25 @@ class MainActivity : AppCompatActivity() {
 
                     if (trailer != 0x0A.toByte()) continue
 
+
+    private fun saveCsv() {
+        if (csvLines.isEmpty()) {
+            Toast.makeText(this, "Няма записи за запазване", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(dir, "UVK6_Log_${System.currentTimeMillis()}.csv")
+            file.writeText("Time,Mode,Frequency_MHz,Channel,Duration_s,S_Meter\n" + csvLines.joinToString("\n"))
+            Toast.makeText(this, "Запазено в Downloads: ${file.name}", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Грешка при запис: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onDestroy() {
+        disconnectUsb()
+        unregisterReceiver(usbReceiver)
+        super.onDestroy()
+    }
+}
