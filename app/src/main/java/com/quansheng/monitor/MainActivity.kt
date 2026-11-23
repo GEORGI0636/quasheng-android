@@ -265,6 +265,8 @@ class MainActivity : AppCompatActivity() {
                     if (trailer != 0x0A.toByte()) continue
 
 
+    }
+
     private fun saveCsv() {
         if (csvLines.isEmpty()) {
             Toast.makeText(this, "Няма записи за запазване", Toast.LENGTH_SHORT).show()
