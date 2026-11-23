@@ -264,10 +264,3 @@ class MainActivity : AppCompatActivity() {
 
                     if (trailer != 0x0A.toByte()) continue
 
-mkdir -p app/src/main/java/com/quansheng/monitor app/src/main/res/xml .github/workflows
-
-cat << 'EOF' > settings.gradle
-pluginManagement {
-    repositories { google(); mavenCentral(); gradlePluginPortal() }
-}
-dependencyResolutionManagement {
