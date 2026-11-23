@@ -263,10 +263,96 @@ class MainActivity : AppCompatActivity() {
                     rxBuf.subList(0, total).clear()
 
                     if (trailer != 0x0A.toByte()) continue
-
-
+                    if (type == 0x05) handleLivePacket(payload)
+                    else if (type == 0x06) handleRows(payload, 0)
+                }
+            }
+            runOnUiThread { if (isRunning) disconnectUsb() }
+        }
     }
 
+    private fun handleLivePacket(payload: ByteArray) {
+        if (payload.size < 4) return
+        val status = payload.get(1).toInt() and 0xFF
+        if ((status and 0x08) != 0) {
+            runOnUiThread {
+                txtStatus.text = "ВНИМАНИЕ"
+                txtLiveMeta.text = "Включете RxTxLog от менюто на радиото!"
+                txtLiveMeta.setTextColor(Color.parseColor("#FBBF24"))
+            }
+            return
+        }
+        var off = 4
+        if (payload.size >= off + 25) {
+            val row = unpackRow(payload, off)
+            off += 25
+            runOnUiThread {
+                txtLiveMeta.setTextColor(Color.parseColor("#CBD5E1"))
+                if ((status and 0x01) != 0 && row.freq > 0) {
+                    txtStatus.text = "АКТИВЕН СИГНАЛ (${row.mode})"
+                    txtStatus.setTextColor(Color.parseColor("#22C55E"))
+                    txtLiveFreq.text = "${row.freqMhz} MHz"
+                    txtLiveFreq.setTextColor(Color.parseColor("#22C55E"))
+                    txtLiveMeta.text = "${row.chan} | ${row.dur}s | S:${row.meter}"
+                } else {
+                    txtStatus.text = "ГОТОВНОСТ (ТИШИНА)"
+                    txtStatus.setTextColor(Color.parseColor("#94A3B8"))
+                    txtLiveFreq.text = "---.----- MHz"
+                    txtLiveFreq.setTextColor(Color.WHITE)
+                    txtLiveMeta.text = "Слушане на ефира..."
+                }
+            }
+        }
+        if (payload.size > off) handleRows(payload, off)
+    }
+
+    private fun handleRows(data: ByteArray, startOff: Int) {
+        var off = startOff
+        while (off + 25 <= data.size) {
+            val r = unpackRow(data, off)
+            off += 25
+            if (r.freq == 0L || r.seq == 0L || seenSeqs.contains(r.seq)) continue
+            seenSeqs.add(r.seq)
+            runOnUiThread { addLogRow(r) }
+        }
+    }
+
+    data class LogRow(val freq: Long, val freqMhz: String, val seq: Long, val dur: Int, val chan: String, val mode: String, val meter: Int)
+
+    private fun unpackRow(data: ByteArray, off: Int): LogRow {
+        val bb = ByteBuffer.wrap(data, off, 25).order(ByteOrder.LITTLE_ENDIAN)
+        val freq = bb.int.toLong() and 0xFFFFFFFFL
+        val seq = bb.int.toLong() and 0xFFFFFFFFL
+        val dur = bb.short.toInt() and 0xFFFF
+        val ch = bb.short.toInt() and 0xFFFF
+        val flags = bb.get().toInt() and 0xFF
+        val meter = bb.get().toInt() and 0xFF
+        bb.get()
+        val nameBytes = ByteArray(10)
+        bb.get(nameBytes)
+        val name = String(nameBytes, Charsets.US_ASCII).substringBefore(0.toChar()).trim()
+        val freqMhz = String.format(Locale.US, "%.5f", freq / 100000.0)
+        val mode = if ((flags and 0x01) != 0) "TX" else "RX"
+        val chan = if (ch == 0xFFFF) "VFO" else "CH-${ch + 1}" + if (name.isNotEmpty()) " ($name)" else ""
+        return LogRow(freq, freqMhz, seq, dur, chan, mode, meter)
+    }
+
+    private fun addLogRow(r: LogRow) {
+        val timeStr = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+        csvLines.add("$timeStr,${r.mode},${r.freqMhz},"${r.chan}",${r.dur},${r.meter}")
+        val item = TextView(this).apply {
+            text = "$timeStr | ${r.mode} | ${r.freqMhz} MHz | ${r.chan} | ${r.dur}s | S:${r.meter}"
+            textSize = 13f
+            typeface = Typeface.MONOSPACE
+            setTextColor(if (r.mode == "TX") Color.parseColor("#F87171") else Color.parseColor("#4ADE80"))
+            setBackgroundColor(Color.parseColor("#1E293B"))
+            setPadding(20, 16, 20, 16)
+            val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            lp.setMargins(0, 0, 0, 8)
+            layoutParams = lp
+        }
+        logContainer.addView(item, 0)
+    }
     private fun saveCsv() {
         if (csvLines.isEmpty()) {
             Toast.makeText(this, "Няма записи за запазване", Toast.LENGTH_SHORT).show()
